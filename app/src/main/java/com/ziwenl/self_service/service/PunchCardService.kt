@@ -58,27 +58,27 @@ class PunchCardService : Service() {
          * 保活
          */
         fun lifeSupport(context: Context) {
-            if (CacheUtil.get(CacheConst.KEY_IS_PUNCH_CARD, false)) {
-                launch(context)
-            } else {
-                //当 dayOfWeek 更新且非周末时，唤醒打卡服务
-                val dayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-                val oldDayOfWeek = CacheUtil.get(
-                    CacheConst.KEY_STOP_PUNCH_CARD_DAY_OF_WEEK,
-                    -1
-                )
-                var needWakeUp = oldDayOfWeek != -1
-                        && oldDayOfWeek != dayOfWeek
-                when (dayOfWeek) {
-                    Calendar.SATURDAY, Calendar.SUNDAY -> {
-                        //周末不打卡
-                        needWakeUp = false
-                    }
-                }
-                if (needWakeUp) {
-                    launch(context)
-                }
-            }
+//            if (CacheUtil.get(CacheConst.KEY_IS_PUNCH_CARD, false)) {
+            launch(context)
+//            } else {
+//                //当 dayOfWeek 更新且非周末时，唤醒打卡服务
+//                val dayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+//                val oldDayOfWeek = CacheUtil.get(
+//                    CacheConst.KEY_STOP_PUNCH_CARD_DAY_OF_WEEK,
+//                    -1
+//                )
+//                var needWakeUp = oldDayOfWeek != -1
+//                        && oldDayOfWeek != dayOfWeek
+//                when (dayOfWeek) {
+//                    Calendar.SATURDAY, Calendar.SUNDAY -> {
+//                        //周末不打卡
+//                        needWakeUp = false
+//                    }
+//                }
+//                if (needWakeUp) {
+//                    launch(context)
+//                }
+//            }
         }
     }
 
@@ -149,19 +149,23 @@ class PunchCardService : Service() {
         )
         if (attendanceListDto != null) {
             if (attendanceListDto.data != null) {
-                val currentTime = parseToString(System.currentTimeMillis(), "HH:mm")
-                val currentHour = currentTime?.substring(0, 2)?.toInt() ?: 0
-                val currentMin = currentTime?.substring(3, 5)?.toInt() ?: 0
+//                val currentTime = parseToString(System.currentTimeMillis(), "HH:mm")
+//                val currentHour = currentTime?.substring(0, 2)?.toInt() ?: 0
+//                val currentMin = currentTime?.substring(3, 5)?.toInt() ?: 0
                 for (dto in attendanceListDto.data) {
-                    val hour = dto.time?.substring(0, 2)?.toInt() ?: 0
-                    val min = dto.time?.substring(3, 5)?.toInt() ?: 0
-                    if (currentHour > hour) {
-                        dto.isPierced = true
-                    } else if (currentHour == hour) {
-                        dto.isPierced = currentMin >= min
-                    } else {
-                        dto.isPierced = false
-                    }
+                    dto.isPierced = false
+                    Timber.v("%s set punched to false", dto.time)
+//                    val hour = dto.time?.substring(0, 2)?.toInt() ?: 0
+//                    val min = dto.time?.substring(3, 5)?.toInt() ?: 0
+//                    if ((currentHour > hour) || ((currentHour == hour) and (currentMin > min))) {
+//                        // now > set time
+//                        dto.isPierced = false
+//                        Timber.v(dto.time + " set punched to false")
+//                    } else if (((currentHour < hour) || ((currentHour == hour) and (currentMin < min)))) {
+//                        // now < set time
+//                        dto.isPierced = false
+//                        Timber.v(dto.time + " set punched to false")
+//                    }
                 }
             }
             CacheUtil.put(CacheConst.KEY_ATTENDANCE_DATA, attendanceListDto)
@@ -176,19 +180,51 @@ class PunchCardService : Service() {
                     mMsgCodeCheckPunchCard -> {
                         Timber.d("倒计时中，打卡处理中")
                         val nowTime = parseToString(System.currentTimeMillis(), "HH:mm")
+
+                        val dayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+                        var isWeekEnd = false
+//                        when (dayOfWeek) {
+//                            Calendar.SATURDAY, Calendar.SUNDAY -> {
+//                                //周末不打卡
+//                                isWeekEnd = true
+//                            }
+//                        }
+
                         val cacheData = CacheUtil.get(
                             CacheConst.KEY_ATTENDANCE_DATA,
                             AttendanceListDto::class.java
                         )!!
                         val attendanceList = cacheData.data!!
                         var needPunchAttendanceDto: AttendanceDto? = null
+
+                        val lastPunchedDay = CacheUtil.get(CacheConst.KEY_LAST_PUNCHED_DAY, 0)
+                        val dayOfYear = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+                        var isTodayPunched = false
+                        if (lastPunchedDay == dayOfYear){
+                            isTodayPunched = true
+                        }
+                        Timber.v("Last punched day of year: %d", lastPunchedDay)
+                        Timber.v("Today day of year: %d", dayOfYear)
+                        Timber.v("isTodayPunched: %b", isTodayPunched)
+
                         for (dto in attendanceList) {
-                            if ((!dto.isPierced) && nowTime.equals(dto.time)) {
-                                needPunchAttendanceDto = dto
-                                dto.isPierced = true
-                                CacheUtil.put(CacheConst.KEY_ATTENDANCE_DATA, cacheData)
-                                break
+                            if (nowTime.equals(dto.time)) {
+                                if (!isWeekEnd && !isTodayPunched && !dto.isPierced) {
+                                    needPunchAttendanceDto = dto
+                                    dto.isPierced = true
+                                    Timber.v(dto.time + " set punched to true (punch it) - now:" + nowTime + ", dto is pierced:" + dto.isPierced)
+                                    CacheUtil.put(CacheConst.KEY_ATTENDANCE_DATA, cacheData)
+                                    CacheUtil.put(CacheConst.KEY_LAST_PUNCHED_DAY, dayOfYear)
+                                    break
+                                }
+                            } else {
+                                if (dto.isPierced) {
+                                    dto.isPierced = false
+                                    Timber.v(dto.time + " set punched to false, now is " + nowTime + ", dto is pierced:" + dto.isPierced)
+                                    CacheUtil.put(CacheConst.KEY_ATTENDANCE_DATA, cacheData)
+                                }
                             }
+
                         }
                         //当前时刻是否需要打卡
                         if (needPunchAttendanceDto != null) {
@@ -203,8 +239,8 @@ class PunchCardService : Service() {
                             }
                         }
                         if (nextNeedPunchCardDto == null) {
-                            mNotificationBuild.setContentText(resources.getText(R.string.today_punch_card_has_been_completed))
-                            mHandler?.sendEmptyMessageDelayed(mMsgCodeStopPunchCard, 10 * 1000)
+//                            mNotificationBuild.setContentText(resources.getText(R.string.today_punch_card_has_been_completed))
+//                            mHandler?.sendEmptyMessageDelayed(mMsgCodeStopPunchCard, 10 * 1000)
                         } else {
                             mNotificationBuild.setContentText(
                                 getString(
@@ -213,8 +249,8 @@ class PunchCardService : Service() {
                                     if (nextNeedPunchCardDto.isPunchIn) "上班卡" else "下班卡"
                                 )
                             )
-                            mHandler?.sendEmptyMessageDelayed(mMsgCodeCheckPunchCard, 10 * 1000)
                         }
+                        mHandler?.sendEmptyMessageDelayed(mMsgCodeCheckPunchCard, 10 * 1000)
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             startForeground(mNotificationId, mNotificationBuild.build())
                         } else {
