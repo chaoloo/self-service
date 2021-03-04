@@ -174,6 +174,9 @@ class PunchCardService : Service() {
                                 //周末不打卡
                                 isWeekEnd = true
                             }
+                            else -> { // Note the block
+                                isWeekEnd = false
+                            }
                         }
 
                         val cacheData = CacheUtil.get(
